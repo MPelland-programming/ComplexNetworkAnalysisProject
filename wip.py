@@ -5,16 +5,11 @@ import scipy
 seed = 9102025
 nn = 400
 low = 1
-high = 400
+high = 401
 
 #Create Barabási-Albert graph
 bgraph = nx.complete_graph(20)
 n1 = nx.barabasi_albert_graph(nn, 10 , seed=seed, initial_graph=bgraph)
-
-################
-#################
-n1 = nx.connected_watts_strogatz_graph(nn, 2, 0.3)
-############
 
 #Set up parameters
 # #opinion
