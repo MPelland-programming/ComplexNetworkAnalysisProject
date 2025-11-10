@@ -1,6 +1,7 @@
 import networkx as nx
 import numpy as np
-import NetworkClasses as nf
+import scipy as sp
+import NetworkFunctions as nf
 
 class GenerateNet4Xp:
     """
@@ -25,10 +26,12 @@ class GenerateNet4Xp:
         self.rng = rng
 
         # Create Barabási-Albert graph
-        self.ori_net = nf.create_graph(nn=self.nn, rng=self.rng, graph_type=self.graph_type)
+        self.net = nf.create_graph(nn=self.nn, rng=self.rng, graph_type=self.graph_type)
 
         # Set up opinions and influence values
-        self.ori_x0, self.ori_u = nf.gen_node_features(nn=self.nn, low=self.low, high=self.high, rng=self.rng)
+        self.x0, self.u = nf.gen_node_features(nn=self.nn, low=self.low, high=self.high, rng=self.rng)
+
+        self.update_weighted_net()
 
 
     def select_and_equate_connected_agents(self, num_agents=2,equate=True):
@@ -44,39 +47,140 @@ class GenerateNet4Xp:
         self.connected_agent_idx = self.rng.choice(self.nn, size=num_agents, replace=False)
 
         if equate:
-            a_infl = self.ori_u[self.connected_agent_idx[0]]
-            a_opin = self.ori_x0[self.connected_agent_idx[0]]
+            a_infl = self.u[self.connected_agent_idx[0]]
+            a_opin = self.x0[self.connected_agent_idx[0]]
 
-            self.ori_u[self.connected_agent_idx] = a_infl
-            self.ori_x0[self.connected_agent_idx] = a_opin
+            self.u[self.connected_agent_idx] = a_infl
+            self.x0[self.connected_agent_idx] = a_opin
 
+        self.update_weighted_net()
 
-    def compute_metrics(self):
-        # Generate adjacency and A matrices
-        self.ori_adj, self.ori_A = nf.gen_network_matrices(self.ori_net, self.ori_u)
-
-
-
-
-
-class NetExperiment1:
-    def __init__(self, opinion_range = [1,401],num_agents=400, graph_type = "BA",seed=9102025):
+    def add_shill_to_agent(self, idx, shill_opinion="agent", shill_influence="agent"):
         """
-        Creates an single  instance of experiment 1 where a single shill is added.
-        Step 1. Generate a base network
-        Step 2. Generate two networks, each with a different shill
-        Step 3. Equate the agent's initial opinions and influence values
-        Step 4.
-
+        Add shills to the original network.
+        :param
+            shill_opinions : list of opinions for each shill
+            shill_influences : list of influence values for each shill
+            num_connections : number of connections each shill will have to the original network
+        :return: self, updated network, opinions, and influence values with shills added
         """
-        self.nn = num_agents
-        self.seed = seed
-        self.vmin = opinion_range[0]
-        self.vmax = opinion_range[1]
-        self.graph_type = graph_type
+        if shill_opinion == "agent":
+            x0s = self.x0[idx]
+        if shill_influence == "agent":
+            us = self.u[idx]
+
+        self.net, self.u,self.x0 = nf.add_shills(self.net,agent_list=[idx]
+                   , num_shills=1, num_connection=1
+                   , x0=self.x0, influence=self.u
+                   , shill_opinion=x0s, shill_influence=us
+                   , rng=self.rng
+                   )
+        self.nn = self.net.number_of_nodes()
+
+        self.update_weighted_net()
+
+    def update_weighted_net(self):
+        """
+        Generate the weighted version of the network.
+        :return: none, updates self to include a new graph with weighted edges
+        """
+        #adj = nx.adjacency_matrix(self.net) + sp.sparse.identity(self.nn)
+
+        #uurep = adj*np.repeat(np.expand_dims(self.u, 1), self.nn, axis=1).T
+        #denom = self.u @ adj
+        #denom = np.repeat(np.expand_dims(denom, 1),self.nn, axis=1)
+
+        #self.wnet = nx.from_scipy_sparse_array(uurep / denom).to_directed()
+
+        adj = nx.adjacency_matrix(self.net).toarray() + np.eye(self.nn)
+        uurep = adj * self.u  # Broadcasting
+        denom = self.u @ adj
+        #denom = (adj * self.u).sum(axis=1)
+
+        self.wnet = nx.from_numpy_array(uurep / denom, create_using=nx.DiGraph)
+
+    def get_consensus_value(self):
+        """
+        Calculate the consensus value of the network.
+        :return: consensus value
+        """
+        eigvec = np.array(list(
+                        nx.eigenvector_centrality_numpy(self.wnet, weight="weight").values())
+                        )
+        norm_eigvec = eigvec/np.sum(eigvec)
+        self.consensus = norm_eigvec @ self.x0
+
+        return self.consensus
+
+    def estimate_convergence_time(self,threshold=0.0000001, criteria_type="std"):
+        """
+        Estimate the convergence time of the network dynamics
+        :param
+            threshold : convergence threshold
+            criteria_type : type of convergence criteria ("std" for standard deviation)
+        :return: estimated convergence time
+        """
+
+        diff = 1 + threshold * (self.high - self.low)
+        x1 = self.x0
+        cc = 0
+
+        if not hasattr(self, 'consensus'):
+            self.get_consensus_value()
+
+
+        print(self.consensus)
+
+        A = nx.adjacency_matrix(self.wnet)
+
+        while diff > threshold * (self.high - self.low):
+            x2 = A @ x1
+            cc += 1
+
+
+            match criteria_type:
+                case "std":
+                    diff = np.std(x2 - x1)
+                    print(np.sum(diff))
+
+            x1 = x2
+        return cc
+
+    def get_expansion_rate(self):
+        A = nx.adjacency_matrix(self.wnet)
+        lams = sp.sparse.linalg.eigsh(A, which="LM", k=2, return_eigenvectors=False)
+
+        return min(lams)
+
+
+#class NetExperiment1:
+#    def __init__(self, opinion_range = [1,401],num_agents=400, graph_type = "BA",seed=9102025):
+#        """
+#        Creates an single  instance of experiment 1 where a single shill is added.
+#        Step 1. Generate a base network
+#        Step 2. Generate two networks, each with a different shill
+#        Step 3. Equate the agent's initial opinions and influence values
+#        Step 4. add shills to each network
+#        Step 5.
+
+ #       """
+ #       self.nn = num_agents
+ #       self.seed = seed
+ #       self.vmin = opinion_range[0]
+ #       self.vmax = opinion_range[1]
+ #       self.graph_type = graph_type
 
         #Generate initial opinions x0 and influence values uu
-        self.x0 = np.random.uniform(low=low, high=high, size=nn).astype(int)
-        self.uu = np.random.uniform(low=low, high=high, size=nn).astype(int)
+#        self.x0 = np.random.uniform(low=low, high=high, size=nn).astype(int)
+#        self.uu = np.random.uniform(low=low, high=high, size=nn).astype(int)
 
 
+#nn = 3
+#u = net1.u[220:223]
+#net = net1.net
+#adj = (nx.adjacency_matrix(net1.net).toarray() + sp.sparse.identity(net1.nn).toarray())[220:223,220:223]
+#adj = nx.adjacency_matrix(net1.net).toarray() + np.eye(net1.nn)
+#        uurep = adj * net1.u  # Broadcasting
+#        denom = (adj * net1.u).sum(axis=1, keepdims=True)
+
+ #       self.wnet = nx.from_numpy_array(uurep / denom, create_using=nx.DiGraph)

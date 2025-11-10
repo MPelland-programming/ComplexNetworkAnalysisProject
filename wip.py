@@ -1,8 +1,12 @@
+import networkx as nx
 import NetworkFunctions as nf
+import scipy as sp
+import NetworkClasses as nc
 import numpy as np
+import copy
 
 seed = 9102025
-num_nodes = 400
+num_nodes = 100
 low = 0
 high = 400
 
@@ -12,30 +16,29 @@ high = 400
 rng = np.random.default_rng(seed=seed)
 
 
+for ii in [0]:
+    net0 = nc.GenerateNet4Xp(num_nodes = num_nodes, low = low, high = high, rng=rng)
 
-#Create Barabási-Albert graph
-ori_net = nf.create_graph(nn=nn, rng=rng, graph_type="BA") #### check how to pass seed
+    net0.select_and_equate_connected_agents()
 
-#Set up opinions and influence values
-ori_x0, ori_u = nf.gen_node_features(nn=nn, low=low, high=high, rng=rng)
+    agents = net0.connected_agent_idx
 
-#add shills
-full_net,full_u,full_x0  = nf.add_shills(ori_net
-               , num_shills=1, num_connection=1
-               , x0=ori_x0, influence=ori_u
-               , shill_opinion=[200], shill_influence=[200]
-               , rng=rng
-               )
+    net1 = copy.deepcopy(net0)
+    net2 = copy.deepcopy(net0)
 
-#Generate adjacency and A matrices
-full_adj,full_A = nf.gen_network_matrices(full_net, full_u)
+    conv1, conv2, cons1, cons2, deg1, deg2,er1,er2 = ([] for i in range(8))
 
-#Get left eigenvector
-leig = nf.compute_lefteigen(full_A,top = 1)
+    net1.add_shill_to_agent([agents[0]])
+    net2.add_shill_to_agent([agents[1]])
 
-#consensus
-con = leig @ full_x0
+    cons1.append(net1.get_consensus_value())
+    cons2.append(net2.get_consensus_value())
 
-#Estimate convergence time
-################## Should I find a real way to do this????
-#contime = estimate_convergence_time(A, x0, threshold=0.01)
+    deg1.append(net1.net.degree[agents[0]])
+    deg2.append(net2.net.degree[agents[1]])
+
+    conv1.append(net1.estimate_convergence_time())
+    conv2.append(net2.estimate_convergence_time())
+
+    er1.append(net1.get_expansion_rate())
+    er2.append(net2.get_expansion_rate())
