@@ -105,14 +105,14 @@ class GenerateNet4Xp:
         :return: consensus value
         """
         eigvec = np.array(list(
-                        nx.eigenvector_centrality_numpy(self.wnet, weight="weight").values())
+                        nx.eigenvector_centrality(self.wnet, weight="weight").values())
                         )
         norm_eigvec = eigvec/np.sum(eigvec)
         self.consensus = norm_eigvec @ self.x0
 
         return self.consensus
 
-    def estimate_convergence_time(self,threshold=0.0000001, criteria_type="std"):
+    def estimate_convergence_time(self,threshold=0.00001, criteria_type="std"):
         """
         Estimate the convergence time of the network dynamics
         :param
@@ -129,8 +129,6 @@ class GenerateNet4Xp:
             self.get_consensus_value()
 
 
-        print(self.consensus)
-
         A = nx.adjacency_matrix(self.wnet)
 
         while diff > threshold * (self.high - self.low):
@@ -141,7 +139,6 @@ class GenerateNet4Xp:
             match criteria_type:
                 case "std":
                     diff = np.std(x2 - x1)
-                    print(np.sum(diff))
 
             x1 = x2
         return cc
@@ -151,6 +148,26 @@ class GenerateNet4Xp:
         lams = sp.sparse.linalg.eigsh(A, which="LM", k=2, return_eigenvectors=False)
 
         return min(lams)
+
+    def committe_inf(self,node, n_neigh):
+        """
+        Implements committe influence by finding all neighbors of node at distance n_neigh
+        and using them to compute group degree centrality.
+        :param n_neigh: distance of neighbors to consider
+        :return: sum of degree-1 of all neighbors of distance n_neigh
+        """
+        clist = [node.item()]
+        for ii in range(n_neigh):
+            tmp = []
+            for jj in set(clist):
+                tmp += list(self.net.neighbors(jj))
+            clist+=tmp
+
+        ulist = list(set(clist))
+        if len(ulist) < self.nn:
+            return nx.group_degree_centrality(self.net, ulist)
+        else:
+            return 1
 
 
 #class NetExperiment1:

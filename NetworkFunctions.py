@@ -4,6 +4,7 @@ General functions for the Complex Networks project
 import networkx as nx
 import numpy as np
 import copy
+import matplotlib.pyplot as plt
 
 
 def create_graph(nn, mm = 10, rng='none',  graph_type="BA"):
@@ -56,7 +57,10 @@ def gen_node_features(nn, low, high,rng):
 #   return norm_leigvec
 
 
-
+def scatterplot(x,y,path="/home/hereinlies/Pictures/tempimage.png"):
+    plt.scatter(x,y)
+    plt.savefig(path)
+    plt.close()
 
 def scatter(src,indexes):
     """
@@ -114,8 +118,8 @@ def add_shills(net, agent_list=[]
         net.add_edges_from(zip(agent_list[shill_idx], [nn + shill_idx]))
 
 
-    if num_connection == 1:
-        net.add_edges_from(zip(range(nn, nn + num_shills), indexes[0:num_shills]))
+    #if num_connection == 1:
+    #    net.add_edges_from(zip(range(nn, nn + num_shills), indexes[0:num_shills]))
     #else:
         #use randomshuffle and the scatter function above
 
