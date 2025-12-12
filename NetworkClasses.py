@@ -1,7 +1,10 @@
+import importlib
 import networkx as nx
 import numpy as np
 import scipy as sp
 import NetworkFunctions as nf
+
+importlib.reload(nf)
 
 class GenerateNet4Xp:
     """
@@ -19,6 +22,7 @@ class GenerateNet4Xp:
                  , graph_type="BA"
                  , rng=np.random.default_rng(seed=1234)
                  ):
+
         self.nn = num_nodes
         self.low = low
         self.high = high
@@ -44,7 +48,13 @@ class GenerateNet4Xp:
             equate : if True, equate the initial opinions and influence values of the selected agents
         :return: self, index of connected agents and updated opinions and influence values if equate is True
         """
-        self.connected_agent_idx = self.rng.choice(self.nn, size=num_agents, replace=False)
+        tmp_idx = self.rng.choice(self.nn, size=num_agents, replace=False)
+
+        if num_agents == 2:
+            if self.net.degree[tmp_idx[0]] > self.net.degree[tmp_idx[1]]:
+                self.connected_agent_idx = tmp_idx
+            else:
+                self.connected_agent_idx = tmp_idx[::-1]
 
         if equate:
             a_infl = self.u[self.connected_agent_idx[0]]
@@ -66,8 +76,12 @@ class GenerateNet4Xp:
         """
         if shill_opinion == "agent":
             x0s = self.x0[idx]
+        else :
+            x0s = shill_opinion
         if shill_influence == "agent":
             us = self.u[idx]
+        else:
+            us = shill_influence
 
         self.net, self.u,self.x0 = nf.add_shills(self.net,agent_list=[idx]
                    , num_shills=1, num_connection=1
@@ -125,8 +139,8 @@ class GenerateNet4Xp:
         x1 = self.x0
         cc = 0
 
-        if not hasattr(self, 'consensus'):
-            self.get_consensus_value()
+        #if not hasattr(self, 'consensus'):
+        #    self.get_consensus_value()
 
 
         A = nx.adjacency_matrix(self.wnet)
@@ -141,13 +155,60 @@ class GenerateNet4Xp:
                     diff = np.std(x2 - x1)
 
             x1 = x2
+
+        self.estimated_convergence_time = cc
         return cc
+
+    def influence_ratio(self, node):
+        """
+        Ratio of influence to average influence of neighbors
+        :param
+            node : target node
+        :return: influence ratio
+        """
+        neighs = list(self.net.neighbors(node))
+        avg_infl = np.mean(self.u[neighs]) if neighs else 0
+
+        if avg_infl == 0:
+            return 0
+        else:
+            return self.u[node] / avg_infl
+
+
+
 
     def get_expansion_rate(self):
         A = nx.adjacency_matrix(self.wnet)
         lams = sp.sparse.linalg.eigsh(A, which="LM", k=2, return_eigenvectors=False)
 
         return min(lams)
+
+    def get_local_expansion_rate(self, node, n_neigh):
+        ulist = self.get_neighbors_at_distance(node, n_neigh)
+
+        subgr = self.wnet.subgraph(ulist)
+
+        A = nx.adjacency_matrix(subgr)
+        lams = sp.sparse.linalg.eigsh(A, which="LM", k=2, return_eigenvectors=False)
+
+        return min(lams)
+
+    def get_neighbors_at_distance(self, node, n_neigh):
+        """
+        Find all neighbors of node at distance n_neigh
+        :param n_neigh: distance of neighbors to consider
+        :return: list of neighbors at distance n_neigh
+        """
+        clist = [node.item()]
+        for ii in range(n_neigh):
+            tmp = []
+            for jj in set(clist):
+                tmp += list(self.net.neighbors(jj))
+            clist += tmp
+
+        ulist = list(set(clist))
+
+        return ulist
 
     def committe_inf(self,node, n_neigh):
         """
@@ -156,18 +217,56 @@ class GenerateNet4Xp:
         :param n_neigh: distance of neighbors to consider
         :return: sum of degree-1 of all neighbors of distance n_neigh
         """
-        clist = [node.item()]
-        for ii in range(n_neigh):
-            tmp = []
-            for jj in set(clist):
-                tmp += list(self.net.neighbors(jj))
-            clist+=tmp
+        ulist = self.get_neighbors_at_distance(node, n_neigh)
 
-        ulist = list(set(clist))
+
         if len(ulist) < self.nn:
-            return nx.group_degree_centrality(self.net, ulist)
+            return nx.group_degree_centrality(self.net, ulist)*(self.nn - len(ulist))
         else:
             return 1
+
+    def committe_dense(self, node, n_neigh):
+            """
+            Find subgraph density
+            :param n_neigh: distance of neighbors to consider
+            :return: sum of degree-1 of all neighbors of distance n_neigh
+            """
+            ulist = self.get_neighbors_at_distance(node, n_neigh)
+
+            return nx.density(self.net.subgraph(ulist))
+
+    def mean_ingoing_to_subgraph(self, node, n_neigh):
+        """Calculate mean weight of edges entering subgraph from outside"""
+        ulist = self.get_neighbors_at_distance(node, n_neigh)
+
+        subnodes = list(self.wnet.subgraph(ulist).nodes)
+
+        weights = []
+        for nod in subnodes:
+            for pred in self.wnet.predecessors(nod):
+                if pred not in subnodes:  # Edge from outside
+                    weights.append(self.wnet[pred][nod]['weight'])
+        return sum(weights) / len(weights) if weights else 0
+
+    def mean_outgoing_from_subgraph(self, node, n_neigh):
+        """Calculate mean weight of edges leaving subgraph to outside"""
+        ulist = self.get_neighbors_at_distance(node, n_neigh)
+
+        subnodes = list(self.wnet.subgraph(ulist).nodes)
+
+        weights = []
+        for nod in subnodes:
+            for succ in self.wnet.successors(nod):
+                if succ not in subnodes:  # Edge to outside
+                    weights.append(self.wnet[nod][succ]['weight'])
+        return sum(weights) / len(weights) if weights else 0
+
+    def closeness_centrality(self, target_node):
+        """
+        Calculate average shortest path length from all other nodes to target_node.
+        """
+        return nx.closeness_centrality(self.net)[target_node]
+
 
 
 #class NetExperiment1:

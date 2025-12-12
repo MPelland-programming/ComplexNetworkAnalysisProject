@@ -1,6 +1,9 @@
 """
 General functions for the Complex Networks project
 """
+import sys
+sys.dont_write_bytecode = True
+
 import networkx as nx
 import numpy as np
 import copy
@@ -60,7 +63,41 @@ def gen_node_features(nn, low, high,rng):
 def scatterplot(x,y,path="/home/hereinlies/Pictures/tempimage.png"):
     plt.scatter(x,y)
     plt.savefig(path)
+    print(np.corrcoef(x,y))
     plt.close()
+
+
+def nice_scatter(x: np.ndarray, y: np.ndarray, x_label: str, path="/home/hereinlies/Pictures/"):
+    print(np.corrcoef(x, y))
+
+    fig, ax = plt.subplots()
+
+    # Scatterplot with violet-indigo color
+    ax.scatter(x, y, color='#5D3FD3', alpha=0.7)
+
+
+    # Axis line width
+    for spine in ax.spines.values():
+        spine.set_linewidth(2)
+
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+    # Set ticks at 0, min, and max for both axes
+    x_min, x_max = x.min(), x.max()
+    y_min, y_max = y.min(), y.max()
+
+    ax.set_xticks([x_min, 0, x_max] if x_min < 0 < x_max else [x_min, x_max])
+    ax.set_yticks([y_min, 0, y_max] if y_min < 0 < y_max else [y_min, y_max])
+
+    # Labels and title
+    ax.set_ylabel("\u0394 λ\u2082 ", fontsize=14,fontweight='bold')
+    ax.set_xlabel("\u0394 "+x_label, fontsize=14,fontweight='bold')
+    ax.tick_params(axis='both', labelsize=14)
+
+    plt.tight_layout()
+    plt.savefig(path+"Figure"+x_label.replace(" ", "_")+".png")
+
 
 def scatter(src,indexes):
     """
